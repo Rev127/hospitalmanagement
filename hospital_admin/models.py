@@ -15,7 +15,7 @@ class PatientDischargeDetails(models.Model):
     assignedDoctorName = models.CharField(max_length=40)
     address = models.CharField(max_length=40)
     mobile = models.CharField(max_length=20, null=True)
-    symptoms = models.CharField(max_length=100, null=True)
+    symptoms = models.TextField(null=True)
     admitDate = models.DateField(null=False)
     releaseDate = models.DateField(null=False)
     daySpent = models.PositiveIntegerField(null=False)

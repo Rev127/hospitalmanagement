@@ -12,6 +12,12 @@ class PatientUserForm(forms.ModelForm):
 
 class PatientForm(forms.ModelForm):
     assignedDoctorId = forms.ModelChoiceField(queryset=Doctor.objects.all().filter(status=True), empty_label="Name and Department", to_field_name="user_id")
+    symptoms = forms.CharField(
+        max_length=100,
+        widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'Symptoms'}),
+        label="Symptoms"
+    )
+
     class Meta:
         model = Patient
         fields = ['address', 'mobile', 'status', 'symptoms', 'profile_pic']

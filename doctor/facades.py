@@ -3,7 +3,7 @@ from django.db.models import Q
 from patient.models import Patient
 from hospital_admin.models import Appointment, PatientDischargeDetails
 from .models import Doctor
-
+from hospital.crypto_facade import CryptoFacade
 
 class DoctorFacade:
 
@@ -24,10 +24,13 @@ class DoctorFacade:
 
     @staticmethod
     def get_dashboard_context(user):
-        """Формує аналітичні картки та списки прийомів для головного екрана лікаря."""
         appointments = Appointment.objects.all().filter(status=True, doctorId=user.id).order_by('-id')
         patient_ids = [a.patientId for a in appointments]
         patients = Patient.objects.all().filter(status=True, user_id__in=patient_ids).order_by('-id')
+
+        # Дешифруємо симптоми для списку на дашборді лікаря
+        for p in patients:
+            p.symptoms = CryptoFacade.decrypt(p.symptoms)
 
         return {
             'patientcount': Patient.objects.all().filter(status=True, assignedDoctorId=user.id).count(),
@@ -45,20 +48,31 @@ class DoctorFacade:
 
     @staticmethod
     def get_assigned_patients(user_id):
-        """Отримує список усіх активних пацієнтів лікаря."""
-        return Patient.objects.all().filter(status=True, assignedDoctorId=user_id)
+        patients = Patient.objects.all().filter(status=True, assignedDoctorId=user_id)
+        for p in patients:
+            p.symptoms = CryptoFacade.decrypt(p.symptoms)
+        return patients
 
     @staticmethod
     def search_assigned_patients(user_id, query):
-        """Здійснює пошук серед пацієнтів лікаря за симптомами або іменем."""
-        return Patient.objects.all().filter(status=True, assignedDoctorId=user_id).filter(
-            Q(symptoms__icontains=query) | Q(user__first_name__icontains=query)
-        )
+        """Крипто-захищений пошук пацієнтів у пам'яті сервера."""
+        all_patients = Patient.objects.all().filter(status=True, assignedDoctorId=user_id)
+        filtered_patients = []
+
+        for p in all_patients:
+            decrypted_symptoms = CryptoFacade.decrypt(p.symptoms)
+            # Якщо запит збігається з розшифрованими симптомами або іменем
+            if query.lower() in decrypted_symptoms.lower() or query.lower() in p.user.first_name.lower():
+                p.symptoms = decrypted_symptoms  # повертаємо вже дешифрований об'єкт
+                filtered_patients.append(p)
+        return filtered_patients
 
     @staticmethod
     def get_discharged_patients(doctor_first_name):
-        """Повертає історичні записи виписаних пацієнтів, у яких лікарем був поточний користувач."""
-        return PatientDischargeDetails.objects.all().distinct().filter(assignedDoctorName=doctor_first_name)
+        discharged = PatientDischargeDetails.objects.all().distinct().filter(assignedDoctorName=doctor_first_name)
+        for d in discharged:
+            d.symptoms = CryptoFacade.decrypt(d.symptoms)
+        return discharged
 
     @staticmethod
     def get_appointments_with_patients(user_id):

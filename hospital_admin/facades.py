@@ -3,6 +3,7 @@ from datetime import date
 from doctor.models import Doctor
 from patient.models import Patient
 from .models import Appointment, PatientDischargeDetails
+from hospital.crypto_facade import CryptoFacade
 
 
 class AdminFacade:
@@ -20,9 +21,16 @@ class AdminFacade:
     @staticmethod
     def get_dashboard_context():
         """Збір усієї агрегованої аналітики та лічильників для головного екрана."""
+        doctors = Doctor.objects.all().order_by('-id')
+        patients = list(Patient.objects.all().order_by('-id'))
+
+        # --- ДЕШИФРУЄМО СИМПТОМИ ДЛЯ КОЖНОГО ПАЦІЄНТА В СПИСКУ ДАШБОРДУ ---
+        for p in patients:
+            p.symptoms = CryptoFacade.decrypt(p.symptoms)
+
         return {
-            'doctors': Doctor.objects.all().order_by('-id'),
-            'patients': Patient.objects.all().order_by('-id'),
+            'doctors': doctors,
+            'patients': patients,
             'doctorcount': Doctor.objects.all().filter(status=True).count(),
             'pendingdoctorcount': Doctor.objects.all().filter(status=False).count(),
             'patientcount': Patient.objects.all().filter(status=True).count(),
@@ -50,7 +58,7 @@ class AdminFacade:
     def save_doctor(user_form, doctor_form, user_instance=None, doctor_instance=None):
         """Універсальний метод для створення або оновлення лікаря адміністратором."""
         user = user_form.save(commit=False)
-        if not user_instance:  # Якщо новий користувач — хешуємо пароль
+        if not user_instance:
             user.set_password(user.password)
         user.save()
 
@@ -71,14 +79,22 @@ class AdminFacade:
         doctor.status = True
         doctor.save()
 
-    # --- УПРАВЛІННЯ ПАЦІЄНТАМИ ---
+    # --- УПРАВЛІННЯ ПАЦІЄНТАМИ (ДООПРАЦЬОВАНО ДЛЯ ДЕШИФРУВАННЯ) ---
     @staticmethod
     def get_approved_patients():
-        return Patient.objects.all().filter(status=True)
+        """Повертає список затверджених пацієнтів із розшифрованими симптомами."""
+        patients = list(Patient.objects.all().filter(status=True))
+        for p in patients:
+            p.symptoms = CryptoFacade.decrypt(p.symptoms)
+        return patients
 
     @staticmethod
     def get_pending_patients():
-        return Patient.objects.all().filter(status=False)
+        """Повертає список пацієнтів на модерацію із розшифрованими симптомами."""
+        patients = list(Patient.objects.all().filter(status=False))
+        for p in patients:
+            p.symptoms = CryptoFacade.decrypt(p.symptoms)
+        return patients
 
     @staticmethod
     def delete_patient(patient_id):
@@ -99,6 +115,10 @@ class AdminFacade:
             patient.user = user
         patient.status = True
         patient.assignedDoctorId = assigned_doctor_id
+
+        if 'symptoms' in patient_form.cleaned_data:
+            patient.symptoms = CryptoFacade.encrypt(patient_form.cleaned_data['symptoms'])
+
         patient.save()
 
         if not user_instance:
@@ -108,29 +128,30 @@ class AdminFacade:
 
     @staticmethod
     def approve_patient(patient_id):
-        patient = Patient.objects.get(id=patient_id)
-        patient.status = True
-        patient.save()
+        doctor = Doctor.objects.get(id=pk)
+        doctor.status = True
+        doctor.save()
 
-    # --- ВИПИСКА ТА ФІНАНСОВІ РОЗРАХУНКИ ---
+    # --- ВИПИСКА ТА ФІНАНСОВІ РОЗРАХУНКИ (ДООПРАЦЬОВАНО ДЛЯ ДЕШИФРУВАННЯ) ---
     @staticmethod
     def get_discharge_initial_context(patient_id):
-        """Початковий збір даних пацієнта та розрахунок кількості проведених днів."""
         patient = Patient.objects.get(id=patient_id)
         days = (date.today() - patient.admitDate)
         d = days.days if days.days > 0 else 1
         assigned_doctor_user = User.objects.all().filter(id=patient.assignedDoctorId).first()
         return {
-            'patientId': patient_id, 'name': patient.get_name, 'mobile': patient.mobile,
-            'address': patient.address, 'symptoms': patient.symptoms, 'admitDate': patient.admitDate,
+            'patientId': patient_id,
+            'name': patient.get_name,
+            'mobile': patient.mobile,
+            'address': patient.address,
+            'symptoms': CryptoFacade.decrypt(patient.symptoms),
+            'admitDate': patient.admitDate,
             'todayDate': date.today(), 'day': d,
             'assignedDoctorName': assigned_doctor_user.first_name if assigned_doctor_user else "Не призначено",
         }
 
     @staticmethod
     def process_patient_discharge(patient_id, context, post_data):
-        """Калькуляція сум, формування об'єкта звіту та збереження в БД."""
-        patient = Patient.objects.get(id=patient_id)
         d = context['day']
 
         pDD = PatientDischargeDetails()
@@ -139,7 +160,10 @@ class AdminFacade:
         pDD.assignedDoctorName = context['assignedDoctorName']
         pDD.address = context['address']
         pDD.mobile = context['mobile']
-        pDD.symptoms = context['symptoms']
+
+        # Шифруємо симптоми перед фіксацією в архівній таблиці виписок
+        pDD.symptoms = CryptoFacade.encrypt(context['symptoms'])
+
         pDD.admitDate = context['admitDate']
         pDD.releaseDate = date.today()
         pDD.daySpent = int(d)
@@ -158,7 +182,11 @@ class AdminFacade:
 
     @staticmethod
     def get_latest_discharge_bill(patient_id):
-        return PatientDischargeDetails.objects.all().filter(patientId=patient_id).order_by('-id').first()
+        """Повертає останній чек виписки із розшифрованими симптомами для PDF-документа."""
+        bill = PatientDischargeDetails.objects.all().filter(patientId=patient_id).order_by('-id').first()
+        if bill:
+            bill.symptoms = CryptoFacade.decrypt(bill.symptoms)
+        return bill
 
     # --- ЗАПИСИ НА ПРИЙОМ (APPOINTMENTS) ---
     @staticmethod
@@ -189,3 +217,14 @@ class AdminFacade:
     @staticmethod
     def delete_appointment(appointment_id):
         Appointment.objects.get(id=appointment_id).delete()
+
+    @staticmethod
+    def get_patient_for_update(patient_id):
+        """Ізолює views від прямого доступу до моделей та дешифрування."""
+        patient = Patient.objects.get(id=patient_id)
+        user = User.objects.get(id=patient.user_id)
+
+        # Дешифруємо дані всередині фасаду
+        patient.symptoms = CryptoFacade.decrypt(patient.symptoms)
+
+        return user, patient

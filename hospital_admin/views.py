@@ -135,11 +135,10 @@ def delete_patient_from_hospital_view(request, pk):
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def update_patient_view(request, pk):
-    from patient.models import Patient
-    patient = Patient.objects.get(id=pk)
-    user = User.objects.get(id=patient.user_id)
-    from patient.forms import PatientUserForm, PatientForm
+    # Отримуємо вже підготовлені та дешифровані об'єкти через Фасад
+    user, patient = AdminFacade.get_patient_for_update(pk)
 
+    from patient.forms import PatientUserForm, PatientForm
     userForm = PatientUserForm(instance=user)
     patientForm = PatientForm(request.FILES, instance=patient)
 
@@ -147,9 +146,15 @@ def update_patient_view(request, pk):
         userForm = PatientUserForm(request.POST, instance=user)
         patientForm = PatientForm(request.POST, request.FILES, instance=patient)
         if userForm.is_valid() and patientForm.is_valid():
-            AdminFacade.save_patient(userForm, patientForm, request.POST.get('assignedDoctorId'), user_instance=user,
-                                     patient_instance=patient)
+            AdminFacade.save_patient(
+                user_form=userForm,
+                patient_form=patientForm,
+                assigned_doctor_id=request.POST.get('assignedDoctorId'),
+                user_instance=user,
+                patient_instance=patient
+            )
             return redirect('admin-view-patient')
+
     return render(request, 'hospital/admin_update_patient.html',
                   context={'userForm': userForm, 'patientForm': patientForm})
 
