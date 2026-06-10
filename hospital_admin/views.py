@@ -1,9 +1,8 @@
 from django.shortcuts import render, redirect, reverse
-from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponseRedirect, HttpResponse
 from hospital.views import is_admin
-from .facades import AdminFacade  # Імпортуємо наш новий фасад адміністратора
+from .facades import AdminFacade  # Наш єдиний інструмент бізнес-логіки
 from . import forms
 import io
 from xhtml2pdf import pisa
@@ -17,27 +16,28 @@ def admin_signup_view(request):
         if form.is_valid():
             AdminFacade.register_admin(form)
             return HttpResponseRedirect('adminlogin')
-    return render(request, 'hospital/adminsignup.html', {'form': form})
+    # Шлях оновлено на hospital_admin/
+    return render(request, 'hospital_admin/adminsignup.html', {'form': form})
 
 
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def admin_dashboard_view(request):
     context = AdminFacade.get_dashboard_context()
-    return render(request, 'hospital/admin_dashboard.html', context=context)
+    return render(request, 'hospital_admin/admin_dashboard.html', context=context)
 
 
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def admin_doctor_view(request):
-    return render(request, 'hospital/admin_doctor.html')
+    return render(request, 'hospital_admin/admin_doctor.html')
 
 
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def admin_view_doctor_view(request):
     doctors = AdminFacade.get_approved_doctors()
-    return render(request, 'hospital/admin_view_doctor.html', {'doctors': doctors})
+    return render(request, 'hospital_admin/admin_view_doctor.html', {'doctors': doctors})
 
 
 @login_required(login_url='adminlogin')
@@ -50,9 +50,8 @@ def delete_doctor_from_hospital_view(request, pk):
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def update_doctor_view(request, pk):
-    from doctor.models import Doctor
-    doctor = Doctor.objects.get(id=pk)
-    user = User.objects.get(id=doctor.user_id)
+    # ПОВНИЙ ФАСАДНИЙ РЕФАКТОРИНГ: Отримуємо підготовлені об'єкти через Фасад
+    user, doctor = AdminFacade.get_doctor_for_update(pk)
     from doctor.forms import DoctorUserForm, DoctorForm
 
     userForm = DoctorUserForm(instance=user)
@@ -64,7 +63,7 @@ def update_doctor_view(request, pk):
         if userForm.is_valid() and doctorForm.is_valid():
             AdminFacade.save_doctor(userForm, doctorForm, user_instance=user, doctor_instance=doctor)
             return redirect('admin-view-doctor')
-    return render(request, 'hospital/admin_update_doctor.html',
+    return render(request, 'hospital_admin/admin_update_doctor.html',
                   context={'userForm': userForm, 'doctorForm': doctorForm})
 
 
@@ -81,14 +80,14 @@ def admin_add_doctor_view(request):
         if userForm.is_valid() and doctorForm.is_valid():
             AdminFacade.save_doctor(userForm, doctorForm)
             return HttpResponseRedirect('admin-view-doctor')
-    return render(request, 'hospital/admin_add_doctor.html', context={'userForm': userForm, 'doctorForm': doctorForm})
+    return render(request, 'hospital_admin/admin_add_doctor.html', context={'userForm': userForm, 'doctorForm': doctorForm})
 
 
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def admin_approve_doctor_view(request):
     doctors = AdminFacade.get_pending_doctors()
-    return render(request, 'hospital/admin_approve_doctor.html', {'doctors': doctors})
+    return render(request, 'hospital_admin/admin_approve_doctor.html', {'doctors': doctors})
 
 
 @login_required(login_url='adminlogin')
@@ -109,20 +108,20 @@ def reject_doctor_view(request, pk):
 @user_passes_test(is_admin)
 def admin_view_doctor_specialisation_view(request):
     doctors = AdminFacade.get_approved_doctors()
-    return render(request, 'hospital/admin_view_doctor_specialisation.html', {'doctors': doctors})
+    return render(request, 'hospital_admin/admin_view_doctor_specialisation.html', {'doctors': doctors})
 
 
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def admin_patient_view(request):
-    return render(request, 'hospital/admin_patient.html')
+    return render(request, 'hospital_admin/admin_patient.html')
 
 
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def admin_view_patient_view(request):
     patients = AdminFacade.get_approved_patients()
-    return render(request, 'hospital/admin_view_patient.html', {'patients': patients})
+    return render(request, 'hospital_admin/admin_view_patient.html', {'patients': patients})
 
 
 @login_required(login_url='adminlogin')
@@ -135,10 +134,10 @@ def delete_patient_from_hospital_view(request, pk):
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def update_patient_view(request, pk):
-    # Отримуємо вже підготовлені та дешифровані об'єкти через Фасад
+    # ПОВНИЙ ФАСАДНИЙ РЕФАКТОРИНГ: Виклики моделей прибрано
     user, patient = AdminFacade.get_patient_for_update(pk)
-
     from patient.forms import PatientUserForm, PatientForm
+
     userForm = PatientUserForm(instance=user)
     patientForm = PatientForm(request.FILES, instance=patient)
 
@@ -146,17 +145,11 @@ def update_patient_view(request, pk):
         userForm = PatientUserForm(request.POST, instance=user)
         patientForm = PatientForm(request.POST, request.FILES, instance=patient)
         if userForm.is_valid() and patientForm.is_valid():
-            AdminFacade.save_patient(
-                user_form=userForm,
-                patient_form=patientForm,
-                assigned_doctor_id=request.POST.get('assignedDoctorId'),
-                user_instance=user,
-                patient_instance=patient
-            )
+            AdminFacade.save_patient(userForm, patientForm, request.POST.get('assignedDoctorId'), user_instance=user,
+                                     patient_instance=patient)
             return redirect('admin-view-patient')
-
-    return render(request, 'hospital/admin_update_patient.html',
-                  context={'userForm': userForm, 'patientForm': patientForm})
+    return render(request, 'hospital_admin/admin_update_patient.html',
+                  context={'userForm': userForm, 'doctorForm': patientForm})
 
 
 @login_required(login_url='adminlogin')
@@ -172,7 +165,7 @@ def admin_add_patient_view(request):
         if userForm.is_valid() and patientForm.is_valid():
             AdminFacade.save_patient(userForm, patientForm, request.POST.get('assignedDoctorId'))
             return HttpResponseRedirect('admin-view-patient')
-    return render(request, 'hospital/admin_add_patient.html',
+    return render(request, 'hospital_admin/admin_add_patient.html',
                   context={'userForm': userForm, 'patientForm': patientForm})
 
 
@@ -180,7 +173,7 @@ def admin_add_patient_view(request):
 @user_passes_test(is_admin)
 def admin_approve_patient_view(request):
     patients = AdminFacade.get_pending_patients()
-    return render(request, 'hospital/admin_approve_patient.html', {'patients': patients})
+    return render(request, 'hospital_admin/admin_approve_patient.html', {'patients': patients})
 
 
 @login_required(login_url='adminlogin')
@@ -201,7 +194,7 @@ def reject_patient_view(request, pk):
 @user_passes_test(is_admin)
 def admin_discharge_patient_view(request):
     patients = AdminFacade.get_approved_patients()
-    return render(request, 'hospital/admin_discharge_patient.html', {'patients': patients})
+    return render(request, 'hospital_admin/admin_discharge_patient.html', {'patients': patients})
 
 
 @login_required(login_url='adminlogin')
@@ -210,8 +203,8 @@ def discharge_patient_view(request, pk):
     patient_dict = AdminFacade.get_discharge_initial_context(pk)
     if request.method == 'POST':
         updated_dict = AdminFacade.process_patient_discharge(pk, patient_dict, request.POST)
-        return render(request, 'hospital/patient_final_bill.html', context=updated_dict)
-    return render(request, 'hospital/patient_generate_bill.html', context=patient_dict)
+        return render(request, 'hospital_admin/patient_final_bill.html', context=updated_dict)
+    return render(request, 'hospital_admin/patient_generate_bill.html', context=patient_dict)
 
 
 def render_to_pdf(template_src, context_dict):
@@ -228,7 +221,7 @@ def download_pdf_view(request, pk):
     bill = AdminFacade.get_latest_discharge_bill(pk)
     if not bill:
         return HttpResponse("Bill not found", status=404)
-    return render_to_pdf('hospital/download_bill.html', {
+    return render_to_pdf('hospital_admin/download_bill.html', {
         'patientName': bill.patientName, 'assignedDoctorName': bill.assignedDoctorName,
         'address': bill.address, 'mobile': bill.mobile, 'symptoms': bill.symptoms,
         'admitDate': bill.admitDate, 'releaseDate': bill.releaseDate, 'daySpent': bill.daySpent,
@@ -240,14 +233,14 @@ def download_pdf_view(request, pk):
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def admin_appointment_view(request):
-    return render(request, 'hospital/admin_appointment.html')
+    return render(request, 'hospital_admin/admin_appointment.html')
 
 
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def admin_view_appointment_view(request):
     appointments = AdminFacade.get_approved_appointments()
-    return render(request, 'hospital/admin_view_appointment.html', {'appointments': appointments})
+    return render(request, 'hospital_admin/admin_view_appointment.html', {'appointments': appointments})
 
 
 @login_required(login_url='adminlogin')
@@ -263,14 +256,14 @@ def admin_add_appointment_view(request):
                 patient_id=request.POST.get('patientId')
             )
             return HttpResponseRedirect('admin-view-appointment')
-    return render(request, 'hospital/admin_add_appointment.html', context={'appointmentForm': appointmentForm})
+    return render(request, 'hospital_admin/admin_add_appointment.html', context={'appointmentForm': appointmentForm})
 
 
 @login_required(login_url='adminlogin')
 @user_passes_test(is_admin)
 def admin_approve_appointment_view(request):
     appointments = AdminFacade.get_pending_appointments()
-    return render(request, 'hospital/admin_approve_appointment.html', {'appointments': appointments})
+    return render(request, 'hospital_admin/admin_approve_appointment.html', {'appointments': appointments})
 
 
 @login_required(login_url='adminlogin')

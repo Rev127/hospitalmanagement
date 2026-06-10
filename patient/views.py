@@ -22,7 +22,7 @@ def patient_signup_view(request):
             )
             return HttpResponseRedirect('patientlogin')
 
-    return render(request, 'hospital/patientsignup.html', context=mydict)
+    return render(request, 'patient/patientsignup.html', context=mydict)
 
 
 @login_required(login_url='patientlogin')
@@ -30,14 +30,14 @@ def patient_signup_view(request):
 def patient_dashboard_view(request):
     # Отримуємо зведений аналітичний контекст через одну команду фасаду
     mydict = PatientFacade.get_dashboard_context(request.user.id)
-    return render(request, 'hospital/patient_dashboard.html', context=mydict)
+    return render(request, 'patient/patient_dashboard.html', context=mydict)
 
 
 @login_required(login_url='patientlogin')
 @user_passes_test(is_patient)
 def patient_appointment_view(request):
     patient_profile = PatientFacade.get_patient_profile(request.user.id)
-    return render(request, 'hospital/patient_appointment.html', {'patient': patient_profile})
+    return render(request, 'patient/patient_appointment.html', {'patient': patient_profile})
 
 
 @login_required(login_url='patientlogin')
@@ -56,7 +56,7 @@ def patient_book_appointment_view(request):
             )
             return HttpResponseRedirect('patient-view-appointment')
 
-    return render(request, 'hospital/patient_book_appointment.html', {
+    return render(request, 'patient/patient_book_appointment.html', {
         'appointmentForm': appointmentForm,
         'patient': patient_profile,
         'message': None
@@ -66,14 +66,14 @@ def patient_book_appointment_view(request):
 def patient_view_doctor_view(request):
     doctors_list = PatientFacade.get_active_doctors()
     patient_profile = PatientFacade.get_patient_profile(request.user.id)
-    return render(request, 'hospital/patient_view_doctor.html', {'doctors': doctors_list, 'patient': patient_profile})
+    return render(request, 'patient/patient_view_doctor.html', {'doctors': doctors_list, 'patient': patient_profile})
 
 
 def search_doctor_view(request):
     query = request.GET['query']
     doctors_list = PatientFacade.search_doctors(query)
     patient_profile = PatientFacade.get_patient_profile(request.user.id)
-    return render(request, 'hospital/patient_view_doctor.html', {'doctors': doctors_list, 'patient': patient_profile})
+    return render(request, 'patient/patient_view_doctor.html', {'doctors': doctors_list, 'patient': patient_profile})
 
 
 @login_required(login_url='patientlogin')
@@ -81,7 +81,7 @@ def search_doctor_view(request):
 def patient_view_appointment_view(request):
     appointments_list = PatientFacade.get_patient_appointments(request.user.id)
     patient_profile = PatientFacade.get_patient_profile(request.user.id)
-    return render(request, 'hospital/patient_view_appointment.html',
+    return render(request, 'patient/patient_view_appointment.html',
                   {'appointments': appointments_list, 'patient': patient_profile})
 
 
@@ -89,4 +89,4 @@ def patient_view_appointment_view(request):
 @user_passes_test(is_patient)
 def patient_discharge_view(request):
     patient_dict = PatientFacade.get_discharge_details_context(request.user.id)
-    return render(request, 'hospital/patient_discharge.html', context=patient_dict)
+    return render(request, 'patient/patient_discharge.html', context=patient_dict)

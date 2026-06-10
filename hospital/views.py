@@ -12,17 +12,17 @@ def home_view(request):
 def adminclick_view(request):
     if request.user.is_authenticated:
         return HttpResponseRedirect('afterlogin')
-    return render(request, 'hospital/adminclick.html')
+    return render(request, 'hospital_admin/adminclick.html')
 
 def doctorclick_view(request):
     if request.user.is_authenticated:
         return HttpResponseRedirect('afterlogin')
-    return render(request, 'hospital/doctorclick.html')
+    return render(request, 'doctor/doctorclick.html')
 
 def patientclick_view(request):
     if request.user.is_authenticated:
         return HttpResponseRedirect('afterlogin')
-    return render(request, 'hospital/patientclick.html')
+    return render(request, 'patient/patientclick.html')
 
 def is_admin(user):
     return user.groups.filter(name='ADMIN').exists()
@@ -45,13 +45,13 @@ def afterlogin_view(request):
         if accountapproval:
             return redirect('doctor-dashboard')
         else:
-            return render(request, 'hospital/doctor_wait_for_approval.html')
+            return render(request, 'doctor/doctor_wait_for_approval.html')
     elif is_patient(request.user):
         accountapproval = Patient.objects.all().filter(user_id=request.user.id, status=True)
         if accountapproval:
             return redirect('patient-dashboard')
         else:
-            return render(request, 'hospital/patient_wait_for_approval.html')
+            return render(request, 'patient/patient_wait_for_approval.html')
 
 def aboutus_view(request):
     return render(request, 'hospital/aboutus.html')

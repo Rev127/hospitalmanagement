@@ -228,3 +228,13 @@ class AdminFacade:
         patient.symptoms = CryptoFacade.decrypt(patient.symptoms)
 
         return user, patient
+
+    @staticmethod
+    def get_doctor_for_update(doctor_id):
+        """Ізолює views від прямого доступу до моделей лікаря під час редагування."""
+        from doctor.models import Doctor
+        from django.contrib.auth.models import User
+
+        doctor = Doctor.objects.get(id=doctor_id)
+        user = User.objects.get(id=doctor.user_id)
+        return user, doctor
