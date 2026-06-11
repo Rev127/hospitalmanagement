@@ -128,7 +128,7 @@ class AdminFacade:
 
     @staticmethod
     def approve_patient(patient_id):
-        doctor = Doctor.objects.get(id=pk)
+        doctor = Patient.objects.get(id=patient_id)
         doctor.status = True
         doctor.save()
 
